@@ -1,6 +1,11 @@
 """领域基础类型与输入校验。"""
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, List
+
+
+# 仍占用船舶时段或备缆的记录状态
+ACTIVE_RESOURCE_STATES = ("approved", "mobilized", "surveyed", "spliced", "tested")
 
 
 class DomainError(Exception):
@@ -21,6 +26,14 @@ class NotFound(DomainError):
 class Conflict(DomainError):
     status = 409
     code = "conflict"
+
+
+class ResourceConflict(Conflict):
+    code = "resource_conflict"
+
+    def __init__(self, message: str, blockers: List[Dict[str, Any]] = None) -> None:
+        super().__init__(message)
+        self.blockers = blockers or []
 
 
 class PermissionDenied(DomainError):
@@ -95,3 +108,19 @@ def text_list(data: Dict[str, Any], key: str, minimum: int = 0) -> List[str]:
     if len(value) < minimum:
         raise ValidationError("%s至少需要%s项" % (key, minimum))
     return [item.strip() for item in value]
+
+
+def parse_instant(raw: str) -> datetime:
+    """解析ISO8601时间，缺失时区按UTC处理，统一转换为UTC。"""
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValidationError("时间不能为空")
+    value = raw.strip()
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValidationError("时间必须是ISO8601格式") from exc
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
