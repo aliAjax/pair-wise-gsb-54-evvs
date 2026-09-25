@@ -51,7 +51,7 @@ class Service:
             raise PermissionDenied("角色无权执行该操作")
         record = self.repository.get(record_id)
         self.rules.require_transition(record, action)
-        new_state, new_payload, summary = self.rules.apply_action(record, action, data or {})
+        new_state, new_payload, summary, resource_op = self.rules.apply_action(record, action, data or {})
         return self.repository.mutate(
             record_id=record_id,
             expected_version=int(expected_version),
@@ -60,7 +60,26 @@ class Service:
             actor_id=actor.user_id,
             action=action,
             details={"summary": summary, "input": data or {}, "from": record["state"], "to": new_state},
+            resource_op=resource_op,
         )
+
+    def create_vessel(self, actor: Actor, payload: Dict[str, Any]) -> Dict[str, Any]:
+        actor = self._actor(actor)
+        self._ensure_known_role(actor)
+        if not self.rules.role_can_manage_vessels(actor.role):
+            raise PermissionDenied("角色无权登记船舶")
+        data = self.rules.validate_vessel(payload or {})
+        return self.repository.create_vessel(data["name"], float(data["spare_cable_km"]), actor.user_id)
+
+    def list_vessels(self, actor: Actor) -> List[Dict[str, Any]]:
+        actor = self._actor(actor)
+        self._ensure_known_role(actor)
+        return self.repository.list_vessels()
+
+    def get_vessel(self, actor: Actor, name: str) -> Dict[str, Any]:
+        actor = self._actor(actor)
+        self._ensure_known_role(actor)
+        return self.repository.get_vessel(text({"name": name}, "name"))
 
     def timeline(self, actor: Actor, record_id: int) -> List[Dict[str, Any]]:
         actor = self._actor(actor)
